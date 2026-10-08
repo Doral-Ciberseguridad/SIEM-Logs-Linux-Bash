@@ -24,19 +24,23 @@ echo ""
 
 
 
-
+# Uso la funcionalidad case, dependiendo la opcion que haya elegido el usuario se ejecutará un bloque de código determinado.
 case $opcion_usuario in
 
+    # Ver logs en tiempo real
     1)
+        # Muestro al usuario cuales son los logs que puede ver en tiempo real el usuario
         echo "1 /var/log/auth.log --> Registra inicios de sesión (exitosos y no exitosos), comandos sudo, uso de PAM y creación de usuarios."
         echo "2 /var/log/syslog --> Diagnostica errores, monitorea el estado de daemons y procesos y eventos del sistema." 
         echo "3 /var/log/kern.log --> Registra los eventos generados por el propio núcleo de Linux, muestra avisos o errores relacionados con el hardware y monitoriza eventos del firewall."
         echo ""
+        # Pido al usuario que eliga uno de los logs anteriores
         read -p "Elige que log quieres ver en tiempo real (1-3) --> " elegir_log
         echo ""
         echo "Recuerda presionar Ctrl+C para salir"
         echo ""
 
+        # Le muestro el log que haya elegido en tiempo real
         case $elegir_log in 
             1)
             tail -f /var/log/auth.log
@@ -50,8 +54,9 @@ case $opcion_usuario in
         ;;
 
 
-
+    # 2.Elegir que eventos críticos se van a alertar.
     2)
+        # Muestro al usuario cuales son los eventos críticos que tiene para elegir
         echo "# auth.log"
         echo "# 1. Accesos SSH"
         echo "# 2. Accesos SSH fallidos"
@@ -72,15 +77,17 @@ case $opcion_usuario in
         echo "# 13. Inicio de sesión de usuario:"
         echo "# 14. Uso de privilegios administrativos"
 
+        # Le pido que elija uno de los anteriores
         read -p "Elige que eventos quieres monitorizar y enviar a /var/log/eventos_monitored.log (Ej: 1,5,9,12) --> " seleccion
 
-        # Procesamos la selección del usuario para mapearla a los patrones correctos
+        # Proceso la selección del usuario para mapearla a los patrones correctos
         IFS=',' read -ra ADDR <<< "$seleccion"
         for i in "${ADDR[@]}"; do
             i=$(echo "$i" | xargs) # Limpiar espacios
             patron=""
             log_target=""
-            
+
+            # Cada evento tiene un mensaje especifico, mapeo el evento, su mensaje y el archivo de log los 3 juntos
             case "$i" in
                 1) patron="Accepted password"; log_target="/var/log/auth.log" ;;
                 2|6) patron="Failed password"; log_target="/var/log/auth.log" ;;
@@ -96,6 +103,7 @@ case $opcion_usuario in
                 14) patron="sudo"; log_target="/var/log/syslog" ;;
             esac
 
+            # Si se cumple alguno de los patrones lo guardo en un archivo generico llamado /var/log/eventos_monitored.log
             if [ -n "$patron" ]; then
                 # Añadir al crontab el comando dinámico con el patrón seleccionado incluyendo --line-buffered
                 echo "@reboot nohup tail -F $log_target | grep --line-buffered -i \"$patron\" >> /var/log/eventos_monitored.log 2>&1 &" >> /etc/crontab
@@ -107,7 +115,7 @@ case $opcion_usuario in
     ;;
 
 
-
+    # 3.Configuro el envio por correo electrónico de los eventos críticos.
     3)
         echo ""
         echo "Instalando dependencias necesarias (mailutils)..."
@@ -115,6 +123,7 @@ case $opcion_usuario in
         sudo apt -qq update 2>/dev/null
         sudo apt -qq install -y mailutils 2>/dev/null
 
+        # Pido al usuario su correo electronico
         read -p "Introduce la dirección de correo electrónico de destino: " correo_destino
         
         # Validación básica para asegurarse de que introduce algo
@@ -123,14 +132,14 @@ case $opcion_usuario in
             exit 1
         fi
 
-        # Definimos la ruta del script actual o un comando directo para el cron diario
+        # Defino la ruta del script actual o un comando directo para el cron diario
         # Por ejemplo, programar un cron a las 08:00 AM todos los días para enviar el log
         cron_diario="0 8 * * * mail -s 'Reporte Diario - SIEM Events' $ecos $correo_destino -A /var/log/eventos_monitored.log 2>/dev/null"
         
         # O una forma más limpia usando echo directo al cuerpo con mail:
         cron_diario_body="0 8 * * * root mail -s 'Alerta SIEM: Resumen Diario de Eventos' $correo_destino < /var/log/eventos_monitored.log"
 
-        # Añadir la tarea al crontab del sistema de forma limpia (evitando duplicados exactos)
+        # Añado la tarea al crontab del sistema de forma limpia (evitando duplicados exactos)
         if ! grep -q "eventos_monitored.log" /etc/crontab; then
             echo "$cron_diario_body" >> /etc/crontab
             echo ""
